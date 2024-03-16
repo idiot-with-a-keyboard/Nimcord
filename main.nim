@@ -5,109 +5,67 @@ import terminal
 import os
 from times import cpuTime
 
-type
-  Connection = object
-    sock:Websocket
-    closed:bool=false
-    token:string
+import strutils
 
-  RawDiscordPacket = object
-    op:int = -1
-    s:int
-    t:string
-    d:JsonNode
-  
-  Opcodes = enum
-    Hello
-  DiscordPacket = object
-    raw:RawDiscordPacket
-    case opcode: Opcodes
-    of Hello:
-      heartbeat_interval:int=45000 #in milliseconds
-
-    
-
-  User = object
-    discard
-
-  Guild = object
-    case unavailable:bool
-    of true:
-      id:string
-    of false:
-      discard
-
-
-  HelloEvent = object
-    heartbeat_interval:int=45000
-
-  ReadyEvent = object
-    v:int
-    user:User
-    guilds:seq[Guild]
-    session_id:string
-    resume_gateway_url:string
+const read_notices:bool=false
 
 #  DiscordPacketData = object
 #    case 
 
 
 let args = commandLineParams()
-let ARG_DEBUG=4
-for i in 0..args.len:
-  case args[i]:
-    of "--debug":
-      let ARG_DEBUG=args[i+1]
-    of "-h", "--help":
-      echo """
-              --debug: sets the debug level(everything of higher importance level than the parameter is shown)
-                0: verbose, filters nothing
-                1: skimming, filters trivial info
-                2: warnings only, filters warnings that don't really matter
-                3: errors, filters warnings, leaving just big errors that arent catastrophic
-                (IE: you would already know because the client crashed lol)
+var ARG_DEBUG:int=4
+echo args
+echo 0..args.len-1
+for i in 0..args.len-1:
+  try:
+    discard parseInt(args[i])
+  except
+    case args[i]:
+      of "--debug":
+        try:
+          ARG_DEBUG=parseInt(args[i+1])
+          if ARG_DEBUG notin 0..4:
+            echo "debug level " & $ARG_DEBUG & " not in 0..4"
+            quit()
+        except:
+          echo "parameter passed to --debug is not an int"
 
-              --help, -h: shows this message"""
-      quit()
-    else:
-      echo "failure in reading arguments, try using --help?"
-      quit()
+      of "-h", "--help":
+        echo """
+                --debug: sets the debug level(everything of higher importance level than the parameter is shown)
+                  0: verbose, filters nothing
+                  1: skimming, filters trivial info
+                  2: warnings only, filters warnings that don't really matter
+                  3: errors, filters warnings, leaving just big errors that arent catastrophic
+                  (IE: you would already know because the client crashed lol)
 
+                --help, -h: shows this message"""
+        quit()
+      else:
+        try:
+          discard parseInt(args[i])
+        except:
+          echo "failure in reading arguments, try using --help?"
+          quit()
 
+echo "DEBUG=" & $ARG_DEBUG
 var connections:seq[Connection]
 
-proc log(importance:int,text:string)=
-    if ARG_DEBUG>importance:
-      let f=open("log.txt",fmAppend)
-      f.writeLine("[" & $cpuTime() & "]: " & text)
-#proc send(con:Connection,data:string)
+proc send(con:Connection,data:string)
 
-proc recvPacket(ws:Websocket):Future[DiscordPacket] {.async.}=
-  let bare_pack = parseJson(await ws.receiveStrPacket())
-  let raw = to(bare_pack,RawDiscordPacket)
-  var pack:DiscordPacket
+log(0,"Basic messages")
+log(1,"Inconsequential warning")
+log(2,"Warning")
+log(3,"Error")
 
-  pack.raw=raw
-  case raw.op:
-    of 10:
-      pack.opcode=Opcodes.Hello
-      pack.heartbeat_interval=raw.d["heartbeat_interval"].getInt(-1)
-      if pack.heartbeat_interval == -1:
-        log 3, "Error collecting heartbeat interval"
-        pack.heartbeat_interval=45000
-    else:
-      log 3, "Invalid opcode found(" & $raw.op & ")"
-      return
+if not read_notices:
+  echo """
+       This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-  return pack
+    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-proc newConnection(token:string):Future[Websocket] {.async.}=
-  var ws = await newWebSocket("wss://gateway.discord.gg/?v=9&encoding=json")
-  log(0,"Began new websocket")
-  let ping_time = (await ws.recvPacket()).heartbeat_interval
-  if ping_time != 45000:
-    log(1,"Ping loop started with abnormal delay(" & $ping_time & ")")
-  else:
-    log(0,"Ping loop started(" & $ping_time & ")")
-  
-  #ws.
+    You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+    If you would like to silence this message change the const "read_notices" to true in the code and recompile with 'nim c -d:ssl nimcord.nim'"""
+
